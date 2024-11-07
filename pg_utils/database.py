@@ -1,5 +1,4 @@
 import json
-import os
 from typing import Any, Dict, List, Optional
 
 import psycopg
@@ -36,17 +35,6 @@ class Database:
             columns = [desc[0] for desc in cursor.description]
             results = [dict(zip(columns, row)) for row in cursor.fetchall()]
             return results
-
-    def execute_query_field(
-        self, query: str, params: Optional[List[Any]] = None
-    ) -> Optional[Dict[str, Any]]:
-        with self.connection.cursor() as cursor:
-            cursor.execute(query, params)
-            columns = [desc[0] for desc in cursor.description]
-            result = cursor.fetchone()
-            if result:
-                return {columns[i]: value for i, value in enumerate(result)}
-            return None
 
     def insert_into_table(
         self, table_name: str, data_dict: Dict[str, Any], returning: str = "id"
@@ -102,7 +90,7 @@ class Database:
 
     def search_by_field(
         self, table: str, field: str, value: Any, fields: Optional[List[str]] = None
-    ) -> List[Dict[str, Any]]:
+    ) -> Optional[Dict[str, Any]]:
         if fields:
             query = sql.SQL("SELECT {} FROM {} WHERE {} = %s").format(
                 sql.SQL(", ").join(sql.Identifier(f) for f in fields),
@@ -114,7 +102,12 @@ class Database:
                 sql.Identifier(table),
                 sql.Identifier(field),
             )
-        return self.execute_query_all(query, [value])
+
+        result = self.execute_query_all(query, [value])
+
+        if result:
+            return result[0]
+        return None
 
     def close(self):
         self.connection.close()
