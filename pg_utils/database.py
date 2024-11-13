@@ -1,5 +1,7 @@
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from .where_types import WhereClause, WhereCondition
 
 import psycopg
 from psycopg import sql
@@ -26,6 +28,77 @@ class Database:
             if config.get("id") == id:
                 return config
         raise ValueError(f"Configuração com id '{id}' não encontrada.")
+
+    def build_where_clause(
+        self,
+        where: Optional[WhereClause] = None,
+        values: Optional[List[Any]] = None,
+        main_table_alias: Optional[str] = None,
+    ) -> Tuple[str, List[Any]]:
+        if not where:
+            return "", []
+
+        and_conditions = []
+        or_conditions = []
+        where_values = values.copy() if values else []
+
+        def process_condition(
+            key: str,
+            condition: WhereCondition,
+            conditions_array: List[str],
+            alias: Optional[str] = None,
+        ):
+            column = f"{alias}.{key}" if alias and "." not in key else key
+
+            if condition is None:
+                conditions_array.append(f"{column} IS NULL")
+            elif isinstance(condition, dict):
+                if "value" in condition and "mode" in condition:
+                    if condition["mode"] == "not":
+                        if condition["value"] is None:
+                            conditions_array.append(f"{column} IS NOT NULL")
+                        else:
+                            conditions_array.append(f"{column} != %s")
+                            where_values.append(condition["value"])
+                    else:
+                        conditions_array.append(f"{column} = %s")
+                        where_values.append(condition["value"])
+                elif any(op in condition for op in ("lt", "lte", "gt", "gte")):
+                    if "lt" in condition:
+                        conditions_array.append(f"{column} < %s")
+                        where_values.append(condition["lt"])
+                    if "lte" in condition:
+                        conditions_array.append(f"{column} <= %s")
+                        where_values.append(condition["lte"])
+                    if "gt" in condition:
+                        conditions_array.append(f"{column} > %s")
+                        where_values.append(condition["gt"])
+                    if "gte" in condition:
+                        conditions_array.append(f"{column} >= %s")
+                        where_values.append(condition["gte"])
+            else:
+                conditions_array.append(f"{column} = %s")
+                where_values.append(condition)
+
+        for key, condition in where.items():
+            if key != "OR":
+                process_condition(key, condition, and_conditions, main_table_alias)
+
+        if "OR" in where:
+            for key, condition in where["OR"].items():
+                process_condition(key, condition, or_conditions, main_table_alias)
+
+        clause = ""
+        if and_conditions or or_conditions:
+            clause += " WHERE "
+            if and_conditions:
+                clause += f"({' AND '.join(and_conditions)})"
+            if or_conditions:
+                if and_conditions:
+                    clause += " OR "
+                clause += f"({' OR '.join(or_conditions)})"
+
+        return clause, where_values
 
     def execute_query_all(
         self, query: str, params: Optional[List[Any]] = None
@@ -69,17 +142,26 @@ class Database:
             return dict(zip(selected_fields, result))
         return None
 
-    def update_into_table(self, table_name: str, data_dict: Dict[str, Any]) -> None:
-        query = sql.SQL("UPDATE {} SET {} WHERE id = %s").format(
-            sql.Identifier(table_name),
-            sql.SQL(", ").join(
-                sql.SQL("{} = %s").format(sql.Identifier(k))
-                for k in data_dict.keys()
-                if k != "id"
-            ),
+    def update_into_table(
+        self,
+        table_name: str,
+        data_dict: Dict[str, Any],
+        where: Optional[WhereClause] = None,
+    ) -> None:
+        columns = [col for col in data_dict.keys() if data_dict[col] is not None]
+        values = [data_dict[col] for col in columns]
+
+        set_clause = sql.SQL(", ").join(
+            sql.SQL("{} = %s").format(sql.Identifier(col)) for col in columns
+        )
+
+        where_clause, where_values = self.build_where_clause(where, values)
+
+        query = sql.SQL("UPDATE {} SET {}{}").format(
+            sql.Identifier(table_name), set_clause, sql.SQL(where_clause)
         )
         with self.connection.cursor() as cursor:
-            cursor.execute(query, list(data_dict.values())[1:] + [data_dict["id"]])
+            cursor.execute(query, where_values)
             self.connection.commit()
 
     def delete_into_table(self, table: str, field: str, value: Any) -> None:
