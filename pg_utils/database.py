@@ -37,23 +37,37 @@ class Database:
             return results
 
     def insert_into_table(
-        self, table_name: str, data_dict: Dict[str, Any], returning: str = "id"
+        self,
+        table_name: str,
+        data_dict: Dict[str, Any],
+        select: Optional[Dict[str, bool]] = None,
     ) -> Any:
-        columns = data_dict.keys()
+        columns = [col for col in data_dict.keys() if data_dict[col] is not None]
         values = [data_dict[col] for col in columns]
 
-        insert_query = sql.SQL("INSERT INTO {} ({}) VALUES ({}) RETURNING {}").format(
+        if select:
+            selected_fields = [col for col, include in select.items() if include]
+            returning_clause = sql.SQL("RETURNING {}").format(
+                sql.SQL(", ").join(map(sql.Identifier, selected_fields))
+            )
+        else:
+            returning_clause = sql.SQL("")
+
+        insert_query = sql.SQL("INSERT INTO {} ({}) VALUES ({}) {}").format(
             sql.Identifier(table_name),
             sql.SQL(", ").join(map(sql.Identifier, columns)),
             sql.SQL(", ").join(sql.Placeholder() * len(values)),
-            sql.Identifier(returning),
+            returning_clause,
         )
 
         with self.connection.cursor() as cursor:
             cursor.execute(insert_query, values)
-            result = cursor.fetchone()
+            result = cursor.fetchone() if select else None
             self.connection.commit()
-            return result[0] if result else None
+
+        if result and select:
+            return dict(zip(selected_fields, result))
+        return None
 
     def update_into_table(self, table_name: str, data_dict: Dict[str, Any]) -> None:
         query = sql.SQL("UPDATE {} SET {} WHERE id = %s").format(
