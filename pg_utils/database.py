@@ -111,7 +111,7 @@ class Database:
 
     def insert_into_table(
         self,
-        table_name: str,
+        table: str,
         data_dict: Dict[str, Any],
         select: Optional[Dict[str, bool]] = None,
     ) -> Any:
@@ -127,7 +127,7 @@ class Database:
             returning_clause = sql.SQL("")
 
         insert_query = sql.SQL("INSERT INTO {} ({}) VALUES ({}) {}").format(
-            sql.Identifier(table_name),
+            sql.Identifier(table),
             sql.SQL(", ").join(map(sql.Identifier, columns)),
             sql.SQL(", ").join(sql.Placeholder() * len(values)),
             returning_clause,
@@ -144,7 +144,7 @@ class Database:
 
     def update_into_table(
         self,
-        table_name: str,
+        table: str,
         data_dict: Dict[str, Any],
         where: Optional[WhereClause] = None,
     ) -> None:
@@ -158,18 +158,24 @@ class Database:
         where_clause, where_values = self.build_where_clause(where, values)
 
         query = sql.SQL("UPDATE {} SET {}{}").format(
-            sql.Identifier(table_name), set_clause, sql.SQL(where_clause)
+            sql.Identifier(table), set_clause, sql.SQL(where_clause)
         )
+
         with self.connection.cursor() as cursor:
             cursor.execute(query, where_values)
             self.connection.commit()
 
-    def delete_into_table(self, table: str, field: str, value: Any) -> None:
-        query = sql.SQL("DELETE FROM {} WHERE {} = %s").format(
-            sql.Identifier(table), sql.Identifier(field)
+    def delete_into_table(
+        self, table: str, where: Optional[WhereClause] = None
+    ) -> None:
+        where_clause, where_values = self.build_where_clause(where)
+
+        query = sql.SQL("DELETE FROM {} {}").format(
+            sql.Identifier(table), sql.SQL(where_clause)
         )
+
         with self.connection.cursor() as cursor:
-            cursor.execute(query, (value,))
+            cursor.execute(query, where_values)
             self.connection.commit()
 
     def search_all(
