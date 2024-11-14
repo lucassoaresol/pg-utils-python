@@ -1,8 +1,8 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name="pg_utils",
-    version="0.1.1",
+    version="0.1.2",
     description="A simple database utility library using psycopg3",
     author="Lucas Soares",
     author_email="lucassoaresolv@outlook.com",

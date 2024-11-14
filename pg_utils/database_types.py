@@ -1,4 +1,11 @@
-from typing import Any, Dict, Optional, TypedDict, Union
+from typing import Any, Dict, Literal, Optional, TypedDict, Union
+
+
+class JoinParams(TypedDict):
+    table: str
+    alias: Optional[str]
+    on: Dict[str, str]
+    type: Optional[Literal["INNER", "LEFT", "RIGHT"]]
 
 
 class WhereConditionValue(TypedDict, total=False):

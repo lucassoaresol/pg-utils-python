@@ -1,10 +1,10 @@
 import json
-from typing import Any, Dict, List, Optional, Tuple
-
-from .where_types import WhereClause, WhereCondition
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import psycopg
 from psycopg import sql
+
+from .database_types import JoinParams, WhereClause, WhereCondition
 
 
 class Database:
@@ -100,7 +100,20 @@ class Database:
 
         return clause, where_values
 
-    def execute_query_all(
+    def create_alias(self, table: str, existing_aliases: set) -> str:
+        parts = table.split("_")
+        alias = "".join(part[0] for part in parts)
+        counter = 0
+
+        while alias in existing_aliases:
+            counter += 1
+            alias = "".join(part[0] for part in parts) + str(counter)
+
+        existing_aliases.add(alias)
+
+        return alias
+
+    def execute_query(
         self, query: str, params: Optional[List[Any]] = None
     ) -> List[Dict[str, Any]]:
         with self.connection.cursor() as cursor:
@@ -165,7 +178,7 @@ class Database:
             cursor.execute(query, where_values)
             self.connection.commit()
 
-    def delete_into_table(
+    def delete_from_table(
         self, table: str, where: Optional[WhereClause] = None
     ) -> None:
         where_clause, where_values = self.build_where_clause(where)
@@ -178,38 +191,106 @@ class Database:
             cursor.execute(query, where_values)
             self.connection.commit()
 
-    def search_all(
-        self, table: str, fields: Optional[List[str]] = None
+    def find_many(
+        self,
+        table: str,
+        alias: Optional[str] = None,
+        order_by: Optional[Dict[str, Literal["ASC", "DESC"]]] = None,
+        select: Optional[Dict[str, bool]] = None,
+        where: Optional[WhereClause] = None,
+        joins: Optional[JoinParams] = None,
+        limit: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        if fields:
-            query = sql.SQL("SELECT {} FROM {}").format(
-                sql.SQL(", ").join(sql.Identifier(f) for f in fields),
-                sql.Identifier(table),
-            )
-        else:
-            query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(table))
-        return self.execute_query_all(query)
+        query_aux = ""
+        selected_fields = []
+        existing_aliases = set()
 
-    def search_by_field(
-        self, table: str, field: str, value: Any, fields: Optional[List[str]] = None
+        main_table_alias = alias or self.create_alias(table, existing_aliases)
+        if alias:
+            existing_aliases.add(alias)
+
+        if select and len(select) > 0:
+            for key, is_selected in select.items():
+                if is_selected:
+                    if "." not in key:
+                        selected_fields.append(f"{main_table_alias}.{key}")
+                    else:
+                        sl_split = key.split(".")
+                        sl_alias = sl_split[0]
+                        column_name = sl_split[-1]
+                        if sl_alias != main_table_alias:
+                            selected_fields.append(f"{key} AS {sl_alias}_{column_name}")
+                        else:
+                            selected_fields.append(key)
+        else:
+            selected_fields.append(f"{main_table_alias}.*")
+
+        if joins:
+            for join in joins:
+                join_alias = join.get("alias") or self.create_alias(
+                    join["table"], existing_aliases
+                )
+
+                if "alias" in join:
+                    existing_aliases.add(join["alias"])
+
+                join_type = join.get("type", "INNER")
+
+                if not select:
+                    join_columns = self.find_many(
+                        "information_schema.columns",
+                        "i",
+                        where={"table_name": join.table},
+                        select={"column_name": True},
+                    )
+                    selected_fields.extend(
+                        f"{join_alias}.{column['column_name']} AS {join_alias}_{column['column_name']}"
+                        for column in join_columns
+                    )
+
+                join_conditions = " AND ".join(
+                    f"{main_table_alias}.{key} = {join_alias}.{value}"
+                    for key, value in join["on"].items()
+                )
+
+                query_aux += f" {join_type} JOIN {join['table']} AS {join_alias} ON {join_conditions}"
+
+        where_clause, where_values = self.build_where_clause(
+            where, main_table_alias=main_table_alias
+        )
+
+        order_clause = ""
+        if order_by:
+            order_clause = "ORDER BY " + ", ".join(
+                (
+                    f"{main_table_alias}.{field} {direction}"
+                    if "." not in field
+                    else f"{field} {direction}"
+                )
+                for field, direction in order_by.items()
+            )
+
+        limit_clause = f"LIMIT {limit}" if limit is not None else ""
+
+        query = (
+            f"SELECT {', '.join(selected_fields)} FROM {table} AS {main_table_alias} "
+            + query_aux
+            + f" {where_clause} {order_clause} {limit_clause};"
+        )
+
+        return self.execute_query(query, where_values)
+
+    def find_first(
+        self,
+        table: str,
+        alias: Optional[str] = None,
+        order_by: Optional[Dict[str, Literal["ASC", "DESC"]]] = None,
+        select: Optional[Dict[str, bool]] = None,
+        where: Optional[WhereClause] = None,
+        joins: Optional[JoinParams] = None,
     ) -> Optional[Dict[str, Any]]:
-        if fields:
-            query = sql.SQL("SELECT {} FROM {} WHERE {} = %s").format(
-                sql.SQL(", ").join(sql.Identifier(f) for f in fields),
-                sql.Identifier(table),
-                sql.Identifier(field),
-            )
-        else:
-            query = sql.SQL("SELECT * FROM {} WHERE {} = %s").format(
-                sql.Identifier(table),
-                sql.Identifier(field),
-            )
-
-        result = self.execute_query_all(query, [value])
-
-        if result:
-            return result[0]
-        return None
+        result = self.find_many(table, alias, order_by, select, where, joins, 1)
+        return result[0] if result else None
 
     def close(self):
         self.connection.close()
