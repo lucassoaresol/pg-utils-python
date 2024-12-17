@@ -240,7 +240,7 @@ class Database:
                     join_columns = self.find_many(
                         "information_schema.columns",
                         "i",
-                        where={"table_name": join.table},
+                        where={"table_name": join["table"]},
                         select={"column_name": True},
                     )
                     selected_fields.extend(
