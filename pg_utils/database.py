@@ -251,9 +251,7 @@ class Database:
                 join_conditions = " AND ".join(
                     f"{column} = {join_alias}.{value}"
                     for key, value in join["on"].items()
-                    for column in [
-                        key if "." not in key else f"{main_table_alias}.{key}"
-                    ]
+                    for column in [key if "." in key else f"{main_table_alias}.{key}"]
                 )
 
                 query_aux += f" {join_type} JOIN {join['table']} AS {join_alias} ON {join_conditions}"
