@@ -54,15 +54,20 @@ class Database:
                 conditions_array.append(f"{column} IS NULL")
             elif isinstance(condition, dict):
                 if "value" in condition and "mode" in condition:
-                    if condition["mode"] == "not":
-                        if condition["value"] is None:
+                    mode = condition["mode"]
+                    value = condition["value"]
+                    if mode == "not":
+                        if value is None:
                             conditions_array.append(f"{column} IS NOT NULL")
                         else:
                             conditions_array.append(f"{column} != %s")
-                            where_values.append(condition["value"])
+                            where_values.append(value)
+                    elif mode == "ilike":
+                        conditions_array.append(f"{column} ILIKE %s")
+                        where_values.append(f"%{value}%")
                     else:
                         conditions_array.append(f"{column} = %s")
-                        where_values.append(condition["value"])
+                        where_values.append(value)
                 elif any(op in condition for op in ("lt", "lte", "gt", "gte")):
                     if "lt" in condition:
                         conditions_array.append(f"{column} < %s")
