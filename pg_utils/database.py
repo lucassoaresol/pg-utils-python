@@ -220,16 +220,27 @@ class Database:
         if select and len(select) > 0:
             for key, is_selected in select.items():
                 if is_selected:
-                    if "." not in key:
-                        selected_fields.append(f"{main_table_alias}.{key}")
-                    else:
-                        sl_split = key.split(".")
-                        sl_alias = sl_split[0]
-                        column_name = sl_split[-1]
-                        if sl_alias != main_table_alias:
-                            selected_fields.append(f"{key} AS {sl_alias}_{column_name}")
+                    if " AS " in key:
+                        original_key, alias = key.split(" AS ")
+                        if "." not in original_key:
+                            selected_fields.append(
+                                f"{main_table_alias}.{original_key} AS {alias}"
+                            )
                         else:
-                            selected_fields.append(key)
+                            selected_fields.append(f"{original_key} AS {alias}")
+                    else:
+                        if "." not in key:
+                            selected_fields.append(f"{main_table_alias}.{key}")
+                        else:
+                            sl_split = key.split(".")
+                            sl_alias = sl_split[0]
+                            column_name = sl_split[-1]
+                            if sl_alias != main_table_alias:
+                                selected_fields.append(
+                                    f"{key} AS {sl_alias}_{column_name}"
+                                )
+                            else:
+                                selected_fields.append(key)
         else:
             selected_fields.append(f"{main_table_alias}.*")
 
