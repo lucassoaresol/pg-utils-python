@@ -123,6 +123,9 @@ class Database:
     ) -> List[Dict[str, Any]]:
         with self.connection.cursor() as cursor:
             cursor.execute(query, params)
+            if not cursor.description:
+                self.connection.commit()
+                return None
             columns = [desc[0] for desc in cursor.description]
             results = [dict(zip(columns, row)) for row in cursor.fetchall()]
             return results
