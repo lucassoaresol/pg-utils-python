@@ -312,5 +312,52 @@ class Database:
         result = self.find_many(table, alias, order_by, select, where, joins, 1)
         return result[0] if result else None
 
+    def count(
+        self,
+        table: str,
+        alias: Optional[str] = None,
+        where: Optional[WhereClause] = None,
+        joins: Optional[JoinParams] = None,
+    ) -> int:
+        query_aux = ""
+        existing_aliases = set()
+
+        main_table_alias = alias or self.create_alias(table, existing_aliases)
+        if alias:
+            existing_aliases.add(alias)
+
+        if joins:
+            for join in joins:
+                join_alias = join.get("alias") or self.create_alias(
+                    join["table"], existing_aliases
+                )
+
+                if "alias" in join:
+                    existing_aliases.add(join["alias"])
+
+                join_type = join.get("type", "INNER")
+
+                join_conditions = " AND ".join(
+                    f"{column} = {join_alias}.{value}"
+                    for key, value in join["on"].items()
+                    for column in [key if "." in key else f"{main_table_alias}.{key}"]
+                )
+
+                query_aux += f" {join_type} JOIN {join['table']} AS {join_alias} ON {join_conditions}"
+
+        where_clause, where_values = self.build_where_clause(
+            where, main_table_alias=main_table_alias
+        )
+
+        query = (
+            f"SELECT COUNT(*) AS total FROM {table} AS {main_table_alias} "
+            + query_aux
+            + f" {where_clause};"
+        )
+
+        result = self.execute_query(query, where_values)
+
+        return result[0]["total"] if result else 0
+
     def close(self):
         self.connection.close()

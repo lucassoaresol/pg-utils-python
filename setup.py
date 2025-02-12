@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="pg_utils",
-    version="0.1.2",
+    version="0.1.3",
     description="A simple database utility library using psycopg3",
     author="Lucas Soares",
     author_email="lucassoaresolv@outlook.com",
