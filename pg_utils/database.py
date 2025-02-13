@@ -1,4 +1,3 @@
-import json
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import psycopg
@@ -8,26 +7,22 @@ from .database_types import JoinParams, WhereClause, WhereCondition
 
 
 class Database:
-    def __init__(self, id: str, config_file: str = "pg-utils.json"):
-        self.config_file = config_file
-        self.config = self.load_config(self.config_file, id)
+    def __init__(self, user: str, host: str, password: str, port: int, database: str):
+        self.user = user
+        self.host = host
+        self.password = password
+        self.port = port
+        self.database = database
+
+    def connect(self):
         self.connection = psycopg.connect(
-            dbname=self.config["database"],
-            user=self.config["user"],
-            password=self.config["password"],
-            host=self.config["host"],
-            port=self.config["port"],
+            dbname=self.database,
+            user=self.user,
+            password=self.password,
+            host=self.host,
+            port=self.port,
             autocommit=False,
         )
-
-    @staticmethod
-    def load_config(config_file: str, id: str) -> Dict[str, Any]:
-        with open(config_file, "r") as file:
-            configs = json.load(file)
-        for config in configs:
-            if config.get("id") == id:
-                return config
-        raise ValueError(f"Configuração com id '{id}' não encontrada.")
 
     def build_where_clause(
         self,
@@ -129,6 +124,26 @@ class Database:
             columns = [desc[0] for desc in cursor.description]
             results = [dict(zip(columns, row)) for row in cursor.fetchall()]
             return results
+
+    def create_database(self):
+        with psycopg.connect(
+            dbname="postgres",
+            user=self.user,
+            password=self.password,
+            host=self.host,
+            port=self.port,
+            autocommit=True,
+        ) as client:
+            with client.cursor() as cursor:
+                cursor.execute(
+                    "SELECT 1 FROM pg_database WHERE datname = %s", (self.database,)
+                )
+                exists = cursor.fetchone()
+                if exists:
+                    print(f'Banco de dados "{self.database}" já existe.')
+                else:
+                    cursor.execute(f'CREATE DATABASE "{self.database}"')
+                    print(f'Banco de dados "{self.database}" criado com sucesso.')
 
     def insert_into_table(
         self,
