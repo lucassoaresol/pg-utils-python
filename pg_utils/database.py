@@ -101,6 +101,7 @@ class Database:
         return clause, where_values
 
     def create_alias(self, table: str, existing_aliases: set) -> str:
+        table = table.lstrip("_")
         parts = table.split("_")
         alias = "".join(part[0] for part in parts)
         counter = 0
