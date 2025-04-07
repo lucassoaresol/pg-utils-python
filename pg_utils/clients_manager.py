@@ -7,7 +7,10 @@ from .pg_utils import PgUtils
 class ClientsManager:
     _instance: Optional["ClientsManager"] = None
     _clients_map: Dict[str, PgUtils] = {}
-    _config_file_path: str = os.path.abspath("pg-utils.json")
+    _config_file_path: str = os.path.join(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")),
+        "pg-utils.json",
+    )
 
     def __new__(cls) -> "ClientsManager":
         if cls._instance is None:
@@ -15,7 +18,6 @@ class ClientsManager:
         return cls._instance
 
     def __init__(self):
-        # Initialize instance only once
         if not hasattr(self, "_initialized"):
             self._initialized = True
             self.load_clients_config()
