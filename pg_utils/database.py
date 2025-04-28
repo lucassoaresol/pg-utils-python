@@ -230,6 +230,8 @@ class Database:
         where: Optional[WhereClause] = None,
         joins: Optional[JoinParams] = None,
         limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        group_by: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         query_aux = ""
         selected_fields = []
@@ -323,6 +325,12 @@ class Database:
             where, main_table_alias=main_table_alias
         )
 
+        group_clause = ""
+        if group_by:
+            group_clause = "GROUP BY " + ", ".join(
+                (f"{main_table_alias}.{key}" if "." not in key else key)
+            )
+
         order_clause = ""
         if order_by:
             order_clause = "ORDER BY " + ", ".join(
@@ -336,10 +344,12 @@ class Database:
 
         limit_clause = f"LIMIT {limit}" if limit is not None else ""
 
+        offset_clause = f"LIMIT {offset}" if limit is not None else ""
+
         query = (
             f"SELECT {', '.join(selected_fields)} FROM {table} AS {main_table_alias} "
             + query_aux
-            + f" {where_clause} {order_clause} {limit_clause};"
+            + f" {where_clause} {group_clause} {order_clause} {limit_clause} {offset_clause};"
         )
 
         return self.execute_query(query, where_values)
