@@ -60,6 +60,12 @@ class Database:
                     elif mode == "ilike":
                         conditions_array.append(f"{column} ILIKE %s")
                         where_values.append(f"%{value}%")
+                    elif mode == "like":
+                        conditions_array.append(f"{column} LIKE %s")
+                        where_values.append(f"%{value}%")
+                    elif mode == "date":
+                        conditions_array.append(f"DATE({column}) = %s")
+                        where_values.append(f"%{value}%")
                     else:
                         conditions_array.append(f"{column} = %s")
                         where_values.append(value)
@@ -244,6 +250,9 @@ class Database:
                             )
                         else:
                             selected_fields.append(f"{original_key} AS {alias}")
+                    elif "*" in key:
+                        if "." not in key:
+                            selected_fields.append(f"{main_table_alias}.{key}")
                     else:
                         if "." not in key:
                             selected_fields.append(f"{main_table_alias}.{key}")
@@ -271,7 +280,26 @@ class Database:
 
                 join_type = join.get("type", "INNER")
 
-                if not select:
+                if select and len(select) > 0:
+                    for key, is_selected in select.items():
+                        if is_selected:
+                            if "*" in key:
+                                if "." in key:
+                                    sl_split = key.split(".")
+                                    sl_alias = sl_split[0]
+                                    if sl_alias == join_alias:
+                                        join_columns = self.find_many(
+                                            "information_schema.columns",
+                                            "i",
+                                            where={"table_name": join["table"]},
+                                            select={"column_name": True},
+                                        )
+                                        selected_fields.extend(
+                                            f"{join_alias}.{column['column_name']} AS {join_alias}_{column['column_name']}"
+                                            for column in join_columns
+                                        )
+
+                else:
                     join_columns = self.find_many(
                         "information_schema.columns",
                         "i",
