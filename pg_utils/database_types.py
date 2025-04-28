@@ -10,14 +10,15 @@ class JoinParams(TypedDict):
 
 class WhereConditionValue(TypedDict, total=False):
     value: Any
-    mode: str
+    mode: Optional[str]
+    is_not: Optional[bool]
 
 
 class WhereConditionRange(TypedDict, total=False):
-    lt: Optional[Any]
-    lte: Optional[Any]
-    gt: Optional[Any]
-    gte: Optional[Any]
+    lt: Optional[Union[Any, WhereConditionValue]]
+    lte: Optional[Union[Any, WhereConditionValue]]
+    gt: Optional[Union[Any, WhereConditionValue]]
+    gte: Optional[Union[Any, WhereConditionValue]]
 
 
 WhereCondition = Union[Any, WhereConditionValue, WhereConditionRange]

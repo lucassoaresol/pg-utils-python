@@ -37,6 +37,71 @@ class Database:
         or_conditions = []
         where_values = values.copy() if values else []
 
+        def format_condition(expression: str, is_not: bool) -> str:
+            if is_not:
+                return f"NOT ({expression})"
+            return expression
+
+        def parse_simple_comparison(
+            column: str, value: Any, is_not: bool, conditions_array: List[str]
+        ):
+            if value is None:
+                conditions_array.append(format_condition(f"{column} IS NULL", is_not))
+            elif isinstance(value, list):
+                placeholders = ", ".join(["%s"] * len(value))
+                conditions_array.append(
+                    format_condition(f"{column} IN ({placeholders})", is_not)
+                )
+                where_values.extend(value)
+            else:
+                conditions_array.append(format_condition(f"{column} = %s", is_not))
+                where_values.append(value)
+
+        def parse_mode_comparison(
+            column: str, condition: Dict[str, Any], conditions_array: List[str]
+        ):
+            mode = condition.get("mode")
+            value = condition.get("value")
+            is_not = condition.get("is_not", False)
+
+            if mode == "ilike":
+                conditions_array.append(format_condition(f"{column} ILIKE %s", is_not))
+                where_values.append(f"%{value}%")
+            elif mode == "like":
+                conditions_array.append(format_condition(f"{column} LIKE %s", is_not))
+                where_values.append(f"%{value}%")
+            elif mode == "date":
+                conditions_array.append(
+                    format_condition(f"DATE({column}) = %s", is_not)
+                )
+                where_values.append(value)
+            else:
+                parse_simple_comparison(column, value, is_not, conditions_array)
+
+        def parse_range_operators(
+            column: str, condition: Dict[str, Any], conditions_array: List[str]
+        ):
+            for op_key, sql_op in [
+                ("lt", "<"),
+                ("lte", "<="),
+                ("gt", ">"),
+                ("gte", ">="),
+            ]:
+                if op_key in condition:
+                    cond_value = condition[op_key]
+                    is_not = False
+
+                    if isinstance(cond_value, dict):
+                        value = cond_value.get("value")
+                        is_not = cond_value.get("is_not", False)
+                    else:
+                        value = cond_value
+
+                    conditions_array.append(
+                        format_condition(f"{column} {sql_op} %s", is_not)
+                    )
+                    where_values.append(value)
+
         def process_condition(
             key: str,
             condition: WhereCondition,
@@ -48,43 +113,12 @@ class Database:
             if condition is None:
                 conditions_array.append(f"{column} IS NULL")
             elif isinstance(condition, dict):
-                if "value" in condition and "mode" in condition:
-                    mode = condition["mode"]
-                    value = condition["value"]
-                    if mode == "not":
-                        if value is None:
-                            conditions_array.append(f"{column} IS NOT NULL")
-                        else:
-                            conditions_array.append(f"{column} != %s")
-                            where_values.append(value)
-                    elif mode == "ilike":
-                        conditions_array.append(f"{column} ILIKE %s")
-                        where_values.append(f"%{value}%")
-                    elif mode == "like":
-                        conditions_array.append(f"{column} LIKE %s")
-                        where_values.append(f"%{value}%")
-                    elif mode == "date":
-                        conditions_array.append(f"DATE({column}) = %s")
-                        where_values.append(f"%{value}%")
-                    else:
-                        conditions_array.append(f"{column} = %s")
-                        where_values.append(value)
+                if "value" in condition:
+                    parse_mode_comparison(column, condition, conditions_array)
                 elif any(op in condition for op in ("lt", "lte", "gt", "gte")):
-                    if "lt" in condition:
-                        conditions_array.append(f"{column} < %s")
-                        where_values.append(condition["lt"])
-                    if "lte" in condition:
-                        conditions_array.append(f"{column} <= %s")
-                        where_values.append(condition["lte"])
-                    if "gt" in condition:
-                        conditions_array.append(f"{column} > %s")
-                        where_values.append(condition["gt"])
-                    if "gte" in condition:
-                        conditions_array.append(f"{column} >= %s")
-                        where_values.append(condition["gte"])
+                    parse_range_operators(column, condition, conditions_array)
             else:
-                conditions_array.append(f"{column} = %s")
-                where_values.append(condition)
+                parse_simple_comparison(column, condition, False, conditions_array)
 
         for key, condition in where.items():
             if key != "OR":
