@@ -378,7 +378,7 @@ class Database:
 
         limit_clause = f"LIMIT {limit}" if limit is not None else ""
 
-        offset_clause = f"LIMIT {offset}" if limit is not None else ""
+        offset_clause = f"LIMIT {offset}" if offset is not None else ""
 
         query = (
             f"SELECT {', '.join(selected_fields)} FROM {table} AS {main_table_alias} "
