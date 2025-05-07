@@ -1,8 +1,8 @@
-from typing import Any, Dict, List, Literal, Optional, Tuple
-
+import json
 import psycopg
 from psycopg import sql
 
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from .database_types import JoinParams, WhereClause, WhereCondition
 
 
@@ -193,7 +193,14 @@ class Database:
         select: Optional[Dict[str, bool]] = None,
     ) -> Any:
         columns = [col for col in data_dict.keys() if data_dict[col] is not None]
-        values = [data_dict[col] for col in columns]
+        values = [
+            (
+                json.dumps(data_dict[col])
+                if isinstance(data_dict[col], dict)
+                else data_dict[col]
+            )
+            for col in columns
+        ]
 
         if select:
             selected_fields = [col for col, include in select.items() if include]
@@ -217,6 +224,46 @@ class Database:
 
         if result and select:
             return dict(zip(selected_fields, result))
+
+        return None
+
+    def insert_many_into_table(
+        self,
+        table: str,
+        data_list: List[Dict[str, Any]],
+    ) -> Any:
+        columns = [col for col in data_list[0].keys()]
+        values = [
+            [
+                (
+                    json.dumps(record[col])
+                    if isinstance(record[col], dict)
+                    else record[col]
+                )
+                for col in columns
+            ]
+            for record in data_list
+        ]
+
+        placeholders = sql.SQL(", ").join(
+            sql.SQL("({})").format(
+                sql.SQL(", ").join(sql.Placeholder() for _ in columns)
+            )
+            for _ in values
+        )
+
+        insert_query = sql.SQL("INSERT INTO {} ({}) VALUES {}").format(
+            sql.Identifier(table),
+            sql.SQL(", ").join(map(sql.Identifier, columns)),
+            placeholders,
+        )
+
+        flattened_values = [item for sublist in values for item in sublist]
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(insert_query, flattened_values)
+            self.connection.commit()
+
         return None
 
     def update_into_table(
