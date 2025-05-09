@@ -272,7 +272,7 @@ class Database:
         data_dict: Dict[str, Any],
         where: Optional[WhereClause] = None,
     ) -> None:
-        columns = [col for col in data_dict.keys() if data_dict[col] is not None]
+        columns = data_dict.keys()
         values = [data_dict[col] for col in columns]
 
         set_clause = sql.SQL(", ").join(
