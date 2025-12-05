@@ -135,7 +135,7 @@ class Database:
                 clause += f"({' AND '.join(and_conditions)})"
             if or_conditions:
                 if and_conditions:
-                    clause += " OR "
+                    clause += " AND "
                 clause += f"({' OR '.join(or_conditions)})"
 
         return clause, where_values
